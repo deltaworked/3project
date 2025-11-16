@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Currency Converter</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Use Inter font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light background matching the template feel */
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        /* Custom styling for the swap button animation */
+        .swap-button:hover .swap-icon {
+            transform: rotate(180deg);
+            transition: transform 0.3s ease-in-out;
+        }
+        /* Custom styling for inputs */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 sm:p-10 border border-gray-100">
+
+        <h1 class="text-3xl font-bold text-indigo-900 mb-2">Currency Converter</h1>
+        <p class="text-gray-600 mb-8 text-sm">
+            Check live rates and set rate alerts.
+            <!-- Removed: 'receive notifications and more' as requested. -->
+        </p>
+
+        <div class="space-y-6">
+
+            <!-- Amount Input Section -->
+            <div class="relative">
+                <label for="amount" class="block text-xs font-medium text-gray-500 mb-1">Amount</label>
+                <div class="flex items-stretch bg-gray-50 rounded-xl border border-gray-200">
+                    <!-- Currency Select Component (FROM) -->
+                    <div class="flex items-center p-3 border-r border-gray-200">
+                        <select id="currency-from" class="bg-transparent text-lg font-semibold text-gray-800 focus:ring-0 border-none p-0">
+                            <!-- Options populated by JS -->
+                        </select>
+                    </div>
+                    <!-- Amount Input -->
+                    <input type="number" id="amount-input" value="100.00" min="0" step="0.01"
+                           class="w-full bg-transparent text-2xl font-bold text-gray-900 p-3 focus:ring-0 border-none text-right placeholder-gray-400"
+                           placeholder="0.00">
+                </div>
+            </div>
+
+            <!-- Swap Button -->
+            <div class="flex justify-center -mt-3 -mb-3 relative z-10">
+                <button id="swap-button"
+                        class="swap-button p-3 bg-indigo-600 text-white rounded-full shadow-lg transition-all duration-300 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 transform scale-110">
+                    <svg class="swap-icon w-6 h-6 transform transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7l4-4m0 0l4 4m-4-4v12m0 0l4 4m-4-4l-4 4"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Converted Amount Section -->
+            <div class="relative">
+                <label for="converted-amount" class="block text-xs font-medium text-gray-500 mb-1">Converted Amount</label>
+                <div class="flex items-stretch bg-gray-50 rounded-xl border border-gray-200">
+                    <!-- Currency Select Component (TO) -->
+                    <div class="flex items-center p-3 border-r border-gray-200">
+                        <select id="currency-to" class="bg-transparent text-lg font-semibold text-gray-800 focus:ring-0 border-none p-0">
+                            <!-- Options populated by JS -->
+                        </select>
+                    </div>
+                    <!-- Converted Amount Display -->
+                    <input type="text" id="converted-amount-display" readonly
+                           class="w-full bg-transparent text-2xl font-bold text-gray-900 p-3 focus:ring-0 border-none text-right"
+                           value="0.00">
+                </div>
+            </div>
+
+            <!-- Indicative Exchange Rate & Loading -->
+            <div class="pt-4">
+                <p id="rate-display" class="text-sm font-semibold text-indigo-700"></p>
+                <div id="loading-indicator" class="hidden flex items-center text-indigo-600">
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Fetching latest rate...
+                </div>
+                <p id="error-message" class="text-sm font-semibold text-red-600 mt-2 hidden"></p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- JavaScript Logic for Currency Conversion and API Calls ---
+
+        // Mapping for country codes to flag emojis (for visual presentation)
+        const FLAG_MAP = {
+            'USD': '🇺🇸 USD', 'EUR': '🇪🇺 EUR', 'GBP': '🇬🇧 GBP', 'JPY': '🇯🇵 JPY',
+            'SGD': '🇸🇬 SGD', 'AUD': '🇦🇺 AUD', 'CAD': '🇨🇦 CAD', 'CHF': '🇨🇭 CHF',
+            'CNY': '🇨🇳 CNY', 'HKD': '🇭🇰 HKD', 'INR': '🇮🇳 INR', 'BRL': '🇧🇷 BRL',
+            'ZAR': '🇿🇦 ZAR', 'KRW': '🇰🇷 KRW', 'MYR': '🇲🇾 MYR', 'PHP': '🇵🇭 PHP',
+            'THB': '🇹🇭 THB', 'VND': '🇻🇳 VND', 'IDR': '🇮🇩 IDR'
+        };
+
+        const API_URL = 'https://api.exchangerate-api.com/v4/latest/';
+
+        // DOM elements
+        const amountInput = document.getElementById('amount-input');
+        const currencyFrom = document.getElementById('currency-from');
+        const currencyTo = document.getElementById('currency-to');
+        const convertedDisplay = document.getElementById('converted-amount-display');
+        const swapButton = document.getElementById('swap-button');
+        const rateDisplay = document.getElementById('rate-display');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const errorMessage = document.getElementById('error-message');
+
+        let exchangeRates = {};
+
+        // 1. Utility Functions
+        /**
+         * Simple exponential backoff retry mechanism for API calls.
+         * @param {Function} fn - The function to retry (must return a Promise).
+         * @param {number} retries - The number of remaining retries.
+         * @param {number} delay - The initial delay in ms.
+         */
+        async function fetchWithRetry(fn, retries = 3, delay = 1000) {
+            try {
+                return await fn();
+            } catch (error) {
+                if (retries === 0) {
+                    throw error;
+                }
+                await new Promise(resolve => setTimeout(resolve, delay));
+                // Do not log retry attempts as errors in the console per instructions
+                return fetchWithRetry(fn, retries - 1, delay * 2);
+            }
+        }
+
+        /**
+         * Fetches exchange rates for the base currency.
+         * @param {string} base - The base currency code (e.g., 'USD').
+         */
+        async function fetchRates(base) {
+            if (exchangeRates[base]) {
+                // Rates are already cached, use them
+                return exchangeRates[base];
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+            rateDisplay.textContent = '';
+            
+            try {
+                const fetcher = async () => {
+                    const response = await fetch(`${API_URL}${base}`);
+                    if (!response.ok) {
+                        throw new Error(`API returned status ${response.status}`);
+                    }
+                    return response.json();
+                };
+
+                const data = await fetchWithRetry(fetcher);
+
+                if (data.result === 'error') {
+                     throw new Error(data['error-type'] || 'Failed to fetch rates due to an API error.');
+                }
+                
+                exchangeRates[base] = data.rates;
+                return data.rates;
+
+            } catch (error) {
+                console.error('Error fetching exchange rates:', error);
+                errorMessage.textContent = 'Could not load live rates. Please check your connection or try again later.';
+                errorMessage.classList.remove('hidden');
+                return null;
+            } finally {
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        /**
+         * Performs the currency conversion and updates the display.
+         */
+        async function convertCurrency() {
+            const base = currencyFrom.value;
+            const target = currencyTo.value;
+            const amount = parseFloat(amountInput.value);
+
+            // Clear previous errors and display
+            errorMessage.classList.add('hidden');
+            convertedDisplay.value = '...';
+            rateDisplay.textContent = '';
+
+            if (isNaN(amount) || amount <= 0) {
+                convertedDisplay.value = '0.00';
+                return;
+            }
+
+            if (base === target) {
+                convertedDisplay.value = amount.toFixed(2);
+                rateDisplay.textContent = `1 ${base} = 1 ${target}`;
+                return;
+            }
+
+            const rates = await fetchRates(base);
+
+            if (rates && rates[target]) {
+                const rate = rates[target];
+                const converted = amount * rate;
+
+                convertedDisplay.value = converted.toFixed(2);
+                rateDisplay.textContent = `1 ${base.replace(' ', '').slice(-3)} = ${rate.toFixed(4)} ${target.replace(' ', '').slice(-3)}`;
+            } else {
+                convertedDisplay.value = 'Error';
+            }
+        }
+
+        // 2. Initialization & Setup
+        function populateCurrencySelects() {
+            const currencies = Object.keys(FLAG_MAP);
+            let optionsHtml = '';
+
+            // Generate options HTML, using the flag map for display
+            currencies.forEach(code => {
+                optionsHtml += `<option value="${code}">${FLAG_MAP[code]}</option>`;
+            });
+
+            currencyFrom.innerHTML = optionsHtml;
+            currencyTo.innerHTML = optionsHtml;
+
+            // Set initial defaults to match the template (SGD to USD)
+            currencyFrom.value = 'SGD';
+            currencyTo.value = 'USD';
+        }
+
+        function setupEventListeners() {
+            // Recalculate on any change to input amount or currency selection
+            amountInput.addEventListener('input', convertCurrency);
+            currencyFrom.addEventListener('change', convertCurrency);
+            currencyTo.addEventListener('change', convertCurrency);
+
+            // Swap functionality
+            swapButton.addEventListener('click', () => {
+                const fromValue = currencyFrom.value;
+                const toValue = currencyTo.value;
+                currencyFrom.value = toValue;
+                currencyTo.value = fromValue;
+                convertCurrency();
+            });
+        }
+
+        // 3. Main execution block
+        window.onload = function() {
+            populateCurrencySelects();
+            setupEventListeners();
+            convertCurrency(); // Initial conversion on load
+        };
+
+    </script>
+</body>
+</html>
